@@ -7,51 +7,62 @@
 #set text(size: 10pt, lang: "en")
 #show heading: set text(weight: "bold")
 #show table.cell.where(y: 0): smallcaps
-#set heading(numbering: "1.1")
+#set heading(numbering: "1.1.")
 #set par(justify: true, leading: 0.62em)
 
-// --- Title block -----------------------------------------------------------
-#align(center)[
-    #text(size: 17pt, weight: "bold")[
-        Solving #emph[La Ghigliottina] with a Typed PPMI Word Graph
-    ]
-    #v(10pt)
-    #text(size: 11pt)[Davide Carella]
-    #v(2pt)
-    #text(size: 9pt, style: "italic")[d.carella12\@studenti.uniba.it]
+#text(size: 17.28pt, weight: "bold")[
+    Solving La Ghigliottina with a Typed PPMI Word Graph
 ]
 
-#v(6pt)
+#v(12pt)
+#text(size: 12pt)[#text(fill: luma(50%))[Davide] Carella#super[#link(<uni>)[1]]]
+#v(2pt)
+#text(size: 8pt, style: "italic")[#super[1]#h(0.05em)University of Bari Aldo Moro, Department of Computer Science, Master’s Degree in Computer Science (LM-18). <uni>]
 
-// --- Abstract --------------------------------------------------------------
-#block(
-    width: 100%,
-    inset: 10pt,
-    stroke: (top: 0.5pt, bottom: 0.5pt),
-)[
-    #text(weight: "bold")[Abstract] #h(6pt)
-    #emph[La Ghigliottina], the final game of the Italian TV show #emph[L'Eredità], presents
-    five clue words and asks for the single word that connects to all five. The connection is
-    rarely plain semantic similarity: it is collocational and cultural, the solution forming a
-    common multi-word expression with each clue. We build a #emph[typed], weighted word graph
-    from the PAISÀ corpus, where edge types encode MWE-bearing syntactic patterns
-    (noun--adjective, #emph[X e Y], #emph[X di Y], #emph[X da Y]) and edge weights are
-    pattern-conditioned PPMI, and we fold in curated `IDIOM` edges mined from Italian
-    #emph[polirematiche] and proverb lists. A simple flat PPMI-sum solver over this graph
-    reaches #strong[accuracy\@1 0.34 / MRR 0.39] on the EVALITA 2018 NLP4FUN test set. We then
-    document an extensive set of extensions that were explored and rejected: knowledge-graph
-    embeddings, personalised PageRank, three additional corpora, compound / embedding-similarity /
-    Wiktionary / ConceptNet edges, breadth-aware scorers, and a learned re-ranker. Every one of
-    them improves recall or MRR but none improves accuracy\@1: the task is bottlenecked by
-    register-matched recall, not by ranking sophistication.
+#v(10pt)
+
+#pad(left: 10%)[
+    #text(weight: "bold")[Abstract]
+    #linebreak()
+    #text(size: 8pt)[
+        #emph[La Ghigliottina], the final game of the Italian TV show #emph[L'Eredità], presents
+        five clue words and asks for the single word that connects to all five. The connection is
+        rarely plain semantic similarity: it is collocational and cultural, the solution forming a
+        common multi-word expression with each clue. We build a #emph[typed], weighted word graph
+        from the PAISÀ corpus, where edge types encode MWE-bearing syntactic patterns
+        (noun--adjective, #emph[X e Y], #emph[X di Y], #emph[X da Y]) and edge weights are
+        pattern-conditioned PPMI, and we fold in curated `IDIOM` edges mined from Italian
+        #emph[polirematiche] and proverb lists. A simple flat PPMI-sum solver over this graph
+        reaches #strong[accuracy\@1 0.34 / MRR 0.39] on the EVALITA 2018 NLP4FUN test set. We then
+        document an extensive set of extensions that were explored and rejected: knowledge-graph
+        embeddings, personalised PageRank, three additional corpora, compound / embedding-similarity /
+        Wiktionary / ConceptNet edges, breadth-aware scorers, and a learned re-ranker. Every one of
+        them improves recall or MRR but none improves accuracy\@1: the task is bottlenecked by
+        register-matched recall, not by ranking sophistication.
+    ]
 
     #v(4pt)
-    #text(weight: "bold")[Keywords] #h(6pt)
-    #text(size: 9pt)[La Ghigliottina · language games · PPMI ·
-    collocations · multi-word expressions · EVALITA NLP4FUN]
+    #text(weight: "bold")[Keywords]
+    #linebreak()
+    #text(size: 8pt)[La Ghigliottina, language games, PPMI, collocations, multi-word expressions, EVALITA NLP4FUN]
 ]
 
-#v(6pt)
+#place(bottom, float: true, clearance: 16pt)[
+    #line(length: 38%, stroke: 0.4pt)
+    #text(size: 8pt, style: "italic")[Natural Language Processing Course 2025–2026, Master’s Degree in Computer Science (LM-18), University of Bari Aldo Moro]
+    #linebreak()
+    #text(size: 8pt)[#box[✉~#link("mailto:d.carella12@studenti.uniba.it")[d.carella12\@studenti.uniba.it] (D. Carella)]]
+    #grid(
+        columns: (auto, 1fr),
+        column-gutter: 6pt,
+        align: horizon,
+        image("cc-by.png", height: 1em),
+        text(size: 6pt)[© 2026 Copyright for this paper by its authors. Use permitted under
+            Creative Commons License Attribution 4.0 International (CC BY 4.0).],
+    )
+]
+
+#v(10pt)
 
 = Introduction and Motivations
 
