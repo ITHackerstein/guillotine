@@ -1,0 +1,235 @@
+// La Ghigliottina solver — slides (native Typst, no package dependency)
+#set page(paper: "presentation-16-9", margin: (x: 2.2cm, y: 1.8cm))
+#set text(size: 20pt, lang: "en")
+#set par(leading: 0.62em)
+#set enum(spacing: 14pt)
+#set list(spacing: 10pt)
+#show heading: set text(weight: "bold")
+
+#let accent = rgb("#1f4e79")
+#show strong: set text(fill: accent)
+
+// One slide = one page, with an optional title bar.
+#let slide(title: none, body) = page[
+  #if title != none [
+    #text(size: 30pt, weight: "bold", fill: accent)[#title]
+    #v(-4pt)
+    #line(length: 100%, stroke: 1.2pt + accent)
+    #v(8pt)
+  ]
+  #body
+]
+
+// Smallcaps table headers, thin rules (matches the report).
+#show table.cell.where(y: 0): smallcaps
+#let rtable(..args) = table(stroke: (x: none), ..args)
+
+// ---------------------------------------------------------------- title slide
+#page[
+  #set align(center + horizon)
+  #text(size: 40pt, weight: "bold", fill: accent)[
+    Solving #emph[La Ghigliottina]
+  ]
+  #v(2pt)
+  #text(size: 26pt)[with a Typed PPMI Word Graph]
+  #v(28pt)
+  #text(size: 22pt)[Davide Carella]
+  #v(4pt)
+  #text(size: 16pt, style: "italic")[d.carella12\@studenti.uniba.it]
+]
+
+// ---------------------------------------------------------------- the game
+#slide(title: "The game")[
+  #emph[La Ghigliottina] (final round of #emph[L'Eredità]): five clue words, find the one word
+  that connects to *all five*.
+
+  #v(4pt)
+  The link is *not* semantic similarity — it is *collocational and cultural*: the answer forms
+  a fixed multi-word expression, compound, or idiom with each clue.
+
+  #v(8pt)
+  #align(center)[
+    #box(inset: 10pt, fill: luma(240), radius: 6pt)[
+      `legno · forte · continua · malattia · veloce` #h(6pt) $=>$ #h(6pt) *`cassa`*
+    ]
+  ]
+  #v(4pt)
+  #align(center)[
+    #text(size: 16pt)[cassa di legno · cassaforte · cassa continua · cassa malattia · cassa]
+  ]
+
+  #v(8pt)
+  #emph[Distributional models (word2vec/fastText) are a poor structural fit — the signal is
+  syntagmatic, not paradigmatic.]
+]
+
+// ---------------------------------------------------------------- approach
+#slide(title: "Approach — three stages")[
+  + *Typed, weighted word graph* from PAISÀ. Edge #emph[types] are MWE-bearing patterns —
+    `MOD` (noun–adj), `BINOMIAL` (X e Y), `DI` (X di Y), `DA` (X da Y). Edge #emph[weights]
+    are *pattern-conditioned PPMI* (PMI within each relation's own pairs).
+  + *Curated `IDIOM` edges* from Italian #emph[polirematiche] + proverbs (≈18.5k pairs).
+    They supply the clue→answer links running text can't — added at a constant weight.
+  + *Flat PPMI-sum solver.* Per clue take the strongest edge to a candidate (max over
+    relations/directions), then sum across the five clues. Highest sum wins.
+
+  #v(10pt)
+  #align(center)[#emph[No learned parameters. One tuned scalar (the idiom weight).]]
+]
+
+// ---------------------------------------------------------------- main result
+#slide(title: "Main result")[
+  Full PAISÀ graph (600k triples / 32k entities), EVALITA 2018 test (100 games).
+
+  #v(10pt)
+  #align(center)[
+    #rtable(
+      columns: 7,
+      align: (left, center, center, center, center, center, center),
+      inset: (x: 10pt, y: 6pt),
+      table.hline(),
+      table.header[Configuration][found][MRR][acc\@1][acc\@5][acc\@10][acc\@100],
+      table.hline(stroke: 0.5pt),
+      [flat-PPMI(sum), PAISÀ only], [60], [0.288], [0.240], [0.330], [0.380], [0.600],
+      [*+ IDIOM (w=5)*], [*67*], [*0.394*], [*0.340*], [*0.460*], [*0.520*], [*0.670*],
+      [IDIOM alone (no corpus)], [43], [0.206], [0.160], [0.240], [0.270], [0.430],
+      table.hline(),
+    )
+  ]
+
+  #v(10pt)
+  Curated idiom edges are the *single largest lever* in the project: acc\@1 0.24 → *0.34*
+  (+42% rel), MRR 0.29 → 0.39. Weight is a wide plateau (w = 4.5–6), not a knife-edge fit.
+]
+
+// ---------------------------------------------------------------- what didn't work
+#slide(title: "What we tried and rejected")[
+  Every extension improves recall / MRR / acc\@{10,100} — *none improves acc\@1.*
+
+  #v(8pt)
+  #grid(columns: (1fr, 1fr), gutter: 18pt,
+    [
+      *Models / scorers*
+      - KGE (ComplEx, RotatE) — acc\@1 0.04 (hubness)
+      - Personalised PageRank — acc\@1 0.05
+      - Coverage / logsum scorers
+      - Learned re-ranker (10 features)
+    ],
+    [
+      *More data / more edges*
+      - Wikipedia, itWaC joins (register miss)
+      - OpenSubtitles (helps recall, not top-1)
+      - COMPOUND, SIM (fastText) edges
+      - Wiktionary MWEs, ConceptNet
+    ],
+  )
+
+  #v(10pt)
+  #align(center)[
+    #box(inset: 10pt, fill: luma(240), radius: 6pt)[
+      ~8 independent experiments · all confirm the same ceiling
+    ]
+  ]
+]
+
+// ---------------------------------------------------------------- KGE
+#slide(title: "Why knowledge-graph embeddings lose")[
+  The project's *original* thesis: learned embeddings could score #emph[unobserved]
+  clue→answer links a graph baseline can't.
+
+  #v(8pt)
+  #align(center)[
+    #rtable(
+      columns: 4,
+      align: (left, center, center, center),
+      inset: (x: 12pt, y: 6pt),
+      table.hline(),
+      table.header[Method][found][MRR][acc\@1],
+      table.hline(stroke: 0.5pt),
+      [*flat-PPMI(sum)*], [*60*], [*0.288*], [*0.240*],
+      [KGE ComplEx (300 ep)], [21], [0.023], [0.010],
+      [KGE RotatE (150 ep)], [37], [0.068], [0.040],
+      table.hline(),
+    )
+  ]
+
+  #v(8pt)
+  Over ~30k entities, link prediction is dominated by *hubness* — frequent adjectives /
+  prepositions absorb probability mass, so the model smears its score instead of pinning the
+  collocate (known partners rank #box[\#66–170]).
+]
+
+// ---------------------------------------------------------------- register
+#slide(title: "Register beats volume")[
+  Extra corpora joined into the PPMI scan (PAISÀ-defined candidates):
+
+  #v(8pt)
+  #align(center)[
+    #rtable(
+      columns: 5,
+      align: (left, center, center, center, left),
+      inset: (x: 12pt, y: 6pt),
+      table.hline(),
+      table.header[Added corpus][+tokens][acc\@1][acc\@100][verdict],
+      table.hline(stroke: 0.5pt),
+      [— (PAISÀ only)], [—], [0.240], [0.600], [baseline],
+      [Wikipedia], [+650M], [0.240], [0.610], [recall only],
+      [*OpenSubtitles 12M*], [+85M], [*0.270*], [0.630], [*helps*],
+      [OpenSubtitles full], [+766M], [0.250], [0.660], [recall ↑, top-1 ↓],
+      [itWaC (web)], [+93M], [0.220], [0.600], [hurts],
+      table.hline(),
+    )
+  ]
+
+  #v(8pt)
+  Dialogue (85M tokens) beats Wikipedia (which *doubled* the graph). But nothing beats the
+  curated idiom edges — the *purest* register match.
+]
+
+// ---------------------------------------------------------------- ceiling
+#slide(title: "The real ceiling is recall")[
+  Gold-rank anatomy of the 100 test games:
+
+  #v(6pt)
+  #align(center)[
+    #rtable(
+      columns: 4,
+      align: (center, center, center, center),
+      inset: (x: 16pt, y: 6pt),
+      table.hline(),
+      table.header[rank \#1][rank 2–10][rank 11–100][missing (>100)],
+      table.hline(stroke: 0.5pt),
+      [34], [18], [17], [*31*],
+      table.hline(),
+    )
+  ]
+
+  #v(10pt)
+  - The 31 misses *exist as graph nodes* but lack the clue→answer *edges* (98/100 gold already
+    in vocab — coverage is not the problem).
+  - A learned re-ranker lifts *train* acc\@1 but *does not transfer* — the ceiling is not a
+    ranking artefact.
+  - SIM / ConceptNet leave train `found` essentially unchanged — wrong *kind* of edge
+    (paradigmatic / too sparse), not the missing syntagmatic collocations.
+]
+
+// ---------------------------------------------------------------- conclusion
+#slide(title: "Conclusions")[
+  A *minimal* system — typed pattern-PPMI over PAISÀ + curated idiom edges + flat sum —
+  reaches *acc\@1 0.34 / MRR 0.39* on EVALITA 2018 NLP4FUN, beating KGE, PageRank, and every
+  corpus/edge extension.
+
+  #v(8pt)
+  *The lesson:* the task is bottlenecked by *register-matched recall*, not model
+  sophistication. The one lever that ever moved top-1 was the idiom register.
+
+  #v(8pt)
+  *Next step:* a register-matched, associative *phrase* resource — not a smarter ranker or
+  more generic text (both dead ends).
+]
+
+// ---------------------------------------------------------------- closing
+#page[
+  #set align(center + horizon)
+  #text(size: 34pt, weight: "bold", fill: accent)[Thank you for your attention!]
+]
