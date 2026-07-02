@@ -1,0 +1,20 @@
+# Environments / tooling
+.direnv/
+flake.*
+.envrc
+.venv/
+.python-version
+
+# Corpora & derived data (see CORPORA.md — not committed for size/licensing)
+.cache/
+dataset/
+paisa/
+polirematiche_proverbi/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Typst build output
+docs/*.pdf

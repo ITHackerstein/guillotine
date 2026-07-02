@@ -1,0 +1,46 @@
+[project]
+name = "guillotine"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13,<3.14" # capped: torch has no cp314 wheels yet
+dependencies = []
+
+[dependency-groups]
+tools = ["spacy>=3.8", "click>=8.2.1"] # NOTE: `click` is only because of a bug in `spacy`
+
+# NOTE: Install the base `llm` group plus exactly ONE backend group for your hardware, e.g.:
+#   uv sync --group llm --group llm-amd      # ROCm
+#   uv sync --group llm --group llm-nvidia   # CUDA
+#   uv sync --group llm --group llm-cpu      # CPU only
+llm = ["transformers>=4.51", "accelerate>=1.2"]
+llm-cpu = ["torch>=2.5"]
+llm-nvidia = ["torch>=2.5"]
+llm-amd = ["torch>=2.5", "pytorch-triton-rocm"]
+
+[tool.uv]
+conflicts = [[{ group = "llm-cpu" }, { group = "llm-nvidia" }, { group = "llm-amd" }]]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-rocm"
+url = "https://download.pytorch.org/whl/rocm6.3"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", group = "llm-cpu" },
+    { index = "pytorch-cu124", group = "llm-nvidia" },
+    { index = "pytorch-rocm", group = "llm-amd" },
+]
+
+pytorch-triton-rocm = [{ index = "pytorch-rocm", group = "llm-amd" }]

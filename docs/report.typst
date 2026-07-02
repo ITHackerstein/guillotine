@@ -1,0 +1,439 @@
+// La Ghigliottina solver — project report
+// CEUR-style single-column layout, approximating the ceurart LaTeX template.
+
+#set document(title: "Solving La Ghigliottina with a Typed PPMI Word Graph")
+#set page(
+  paper: "a4",
+  margin: (x: 2.2cm, y: 2.4cm),
+  numbering: "1",
+)
+#set text(size: 10pt, lang: "en")
+#show heading: set text(weight: "bold")
+#set heading(numbering: "1.1")
+#set par(justify: true, leading: 0.62em)
+
+// --- Title block -----------------------------------------------------------
+#align(center)[
+  #text(size: 17pt, weight: "bold")[
+    Solving #emph[La Ghigliottina] with a Typed PPMI Word Graph
+  ]
+  #v(10pt)
+  #text(size: 11pt)[Davide Carella]
+  #v(2pt)
+  #text(size: 9pt, style: "italic")[d.carella12\@studenti.uniba.it]
+]
+
+#v(6pt)
+
+// --- Abstract --------------------------------------------------------------
+#block(
+  width: 100%,
+  inset: 10pt,
+  stroke: (top: 0.5pt, bottom: 0.5pt),
+)[
+  #text(weight: "bold")[Abstract] #h(6pt)
+  #emph[La Ghigliottina] — the final game of the Italian TV show #emph[L'Eredità] — presents
+  five clue words and asks for the single word that connects to all five. The connection is
+  rarely plain semantic similarity: it is collocational and cultural, the solution forming a
+  common multi-word expression with each clue. We build a #emph[typed], weighted word graph
+  from the PAISÀ corpus, where edge types encode MWE-bearing syntactic patterns
+  (noun--adjective, #emph[X e Y], #emph[X di Y], #emph[X da Y]) and edge weights are
+  pattern-conditioned PPMI, and we fold in curated `IDIOM` edges mined from Italian
+  #emph[polirematiche] and proverb lists. A simple flat PPMI-sum solver over this graph
+  reaches #strong[accuracy\@1 0.34 / MRR 0.39] on the EVALITA 2018 NLP4FUN test set. We then
+  document an extensive set of extensions that were explored and #emph[rejected] — knowledge-graph
+  embeddings, personalised PageRank, three additional corpora, compound / embedding-similarity /
+  Wiktionary / ConceptNet edges, breadth-aware scorers, and a learned re-ranker. Every one of
+  them improves recall or MRR but #emph[none] improves accuracy\@1: the task is bottlenecked by
+  #emph[register-matched recall], not by ranking sophistication.
+
+  #v(4pt)
+  #text(weight: "bold")[Keywords] #h(6pt)
+  #text(size: 9pt)[La Ghigliottina · language games · PPMI ·
+  collocations · multi-word expressions · EVALITA NLP4FUN]
+]
+
+#v(6pt)
+
+= Introduction and Motivations
+
+#emph[La Ghigliottina] gives the player five clue words and asks for the one solution word
+that links to all five simultaneously. The linking relation is almost never distributional
+similarity; it is #emph[collocational and cultural]. The solution typically forms a fixed
+multi-word expression (MWE), a compound, or an idiom with each clue: `capo`+`stazione` →
+#emph[capostazione]; `sale` #emph[e] `pepe`; `acqua` #emph[di] `mare`; `sale` #emph[grosso].
+A concrete test game — clues `legno, forte, continua, malattia, veloce` — has solution
+`cassa` (#emph[cassa di legno], #emph[cassaforte], #emph[cassa continua], #emph[cassa
+malattia], #emph[cassa]... ), none of which a similarity model would surface.
+
+Because the signal lives inside specific syntactic patterns rather than in a similarity
+space, purely distributional models (word2vec/fastText) are a poor structural fit. The design
+question this project answers is therefore #emph[not] "which model is most powerful" but
+"which #emph[signal] does the game actually rely on, and what is the smallest system that
+captures it directly." The answer, established across many experiments, is that a plain typed
+co-occurrence graph enriched with curated idiom edges captures it, and that the residual error
+is a #emph[recall] problem — missing clue→ answer links — that no smarter scorer
+can close.
+
+This report describes the shipped system (Section 3), evaluates it (Section 4), and — because
+the negative results are the substantive contribution — documents in Section 5 the full set of
+extensions that were tried and did not move the top-1 metric. None of the Section 5 machinery
+is part of the final codebase; it is retained here as the experimental record that justifies
+the minimal design.
+
+= Related Work
+
+The EVALITA NLP4FUN shared task @basile2018nlp4fun framed #emph[La Ghigliottina] as a
+computational language game. The seminal artificial player, OTTHO @basile2009ottho, solved it
+by a #emph[knowledge-infusion] process over a dictionary, proverb lists, and Wikipedia:
+retrieval / co-occurrence over large Italian text and lexical resources, an approach that
+outperformed learned-embedding methods — the same qualitative outcome we reproduce here. Our
+contribution is not a new model but a controlled ablation showing #emph[why]: on a graph of
+~30k entities, knowledge-graph embeddings are dominated by hubness, and every
+recall-broadening extension trades top-1 accuracy for rank-tail recall.
+
+Methodologically the system rests on pointwise mutual information (PMI) and its positive
+variant (PPMI), the standard association measure for
+collocations, applied #emph[within] each syntactic relation rather than over a single
+undifferentiated co-occurrence window. Because the game's signal is syntagmatic rather than
+paradigmatic, purely distributional embeddings — word2vec @mikolov2013efficient and fastText
+@bojanowski2017enriching @grave2018learning — are a poor structural fit, a hypothesis the
+knowledge-graph-embedding experiments (Section 5) confirm.
+
+= Proposed Approach
+
+== Description of the solution and dataset
+
+The shipped solver has three stages.
+
++ #strong[Build a typed, weighted word graph] from the PAISÀ corpus. Edge #emph[types] are
+  MWE-bearing relations extracted by adjacency patterns over lemma+POS sequences:
+  `MOD` (noun– adjective, either order), `BINOMIAL` (`X e Y`), `DI` (`X di Y`), and
+  `DA` (`X da Y`). Edge #emph[weights] are #strong[pattern-conditioned PPMI]: PMI is computed
+  #emph[within each relation's own pair population], so the association of a pair is measured
+  against the right baseline rather than a global one.
+
++ #strong[Fold in curated `IDIOM` edges] mined from Italian #emph[polirematiche] and proverb
+  lists. These supply the clue→ answer links that running-text adjacency patterns
+  structurally cannot produce (idioms are phrase lists, not local syntactic patterns). Each
+  curated edge is added with a constant weight (default 5.0).
+
++ #strong[Solve with flat PPMI-sum.] For each clue, take the strongest edge to a candidate
+  (a `max` over relations and directions, computed once as an adjacency map), then #emph[sum]
+  those best-edge weights across the five clues. The candidate with the highest sum is the
+  predicted solution.
+
+#strong[Dataset.] Evaluation uses the EVALITA 2018 NLP4FUN test set: 100 games in JSON-Lines,
+each with `hint1..hint5` and a gold `sol`. This set is used for scoring only, never for
+training — the solver has no learned parameters. A larger `train.json` (965 games) exists and
+is used only for the sanity check and the re-ranker experiment in Section 5.
+
+== Main technical details
+
+#strong[Corpus.] The base graph is built from the full PAISÀ corpus @lyding2014paisa
+(annotated CoNLL, CC BY-NC-SA), streamed rather than materialised. The loader (`corpus.py`) reads gzip/xz
+transparently, maps both the Tanl and Universal Dependencies POS tagsets to a coarse common
+set, falls back from a missing lemma to the surface form, and yields one sentence at a time so
+that memory is bounded by vocabulary size, not corpus size.
+
+#strong[Vocabulary.] A frequency list defines the candidate vocabulary: the top ~50,000
+lemmas with frequency ≥ 5. Only pairs whose #emph[both] endpoints are in this
+vocabulary are counted — this is the single memory lever that makes a full-corpus pair count
+tractable.
+
+#strong[Pair extraction and PPMI] (`graph.py`). For each sentence the extractor walks tokens
+and emits: a `MOD` pair for adjacent NOUN– ADJ (canonicalised noun-first); and, for
+tokens two apart joined by the right function word, a `BINOMIAL` / `DI` / `DA` pair keyed on
+the connective lemma and POS. Per relation, with $c$ the pair count, $"tot"$ the relation
+total, and $h,t$ the head/tail marginals, the weight is
+$ "ppmi"(x,y) = max(0, ln( (c dot "tot") / (h(x) dot t(y)) ) ), $
+kept only when $c ≥ 5$ (`min_count`). The curated idiom edges are then merged in as a
+separate `IDIOM` relation at constant weight.
+
+#strong[Curated idiom mining] (`tools/mwe_edges.py`). Three Italian resources — ~31k De
+Mauro #emph[polirematiche], 4.7k tagged #emph[polirematiche], and 369 proverbs — are tagged
+with spaCy @honnibal2020spacy (`it_core_news_sm`); only #emph[nominal] content lemmas (NOUN/ADJ/PROPN) that are in
+the vocabulary are kept, and an undirected edge is emitted for every unordered lemma pair
+co-occurring in a phrase. Restricting to nominal lemmas is deliberate: including VERB/ADV
+pulls in hub lemmas (#emph[fare], #emph[avere], #emph[essere]) that pollute the sum scorer.
+The 36k phrases yield ~18.5k distinct nominal pairs.
+
+== Other information useful to replicate the approach
+
+The winning configuration is reproduced with:
+
+```bash
+python tools/mwe_edges.py mine            # -> .cache/mwe_idiom_edges.tsv  (spaCy, ~20s)
+python -m guillotine.cli evaluate \
+    --corpus paisa/paisa.annotated.CoNLL.utf8.gz \
+    --freq   paisa/lemma-WITHOUTnumberssymbols-frequencies-paisa.txt.gz \
+    --idiom  .cache/mwe_idiom_edges.tsv \
+    --combine sum
+```
+
+The first run scans PAISÀ and caches the triples to `.cache/triples.tsv`; later runs reuse
+the cache. A single game is solved with `python -m guillotine.cli solve --clues "legno,forte,continua,malattia,veloce"`
+(gold: `cassa`), optionally with `--describe` for an LLM-generated per-clue explanation.
+
+= Evaluation
+
+== Setup and metrics
+
+The graph is built from full PAISÀ (599,964 typed triples over 32,018 entities at
+`min_count=5`, top-50k vocabulary). We report, over the 100-game EVALITA test set:
+#emph[found] (gold present in the top 100), MRR, and accuracy\@{1,5,10,100}. The primary
+metric for the game is accuracy\@1.
+
+== Main result
+
+#figure(
+  caption: [The shipped configuration against the plain baseline. Curated idiom edges are the
+    single largest lever in the project.],
+  table(
+    columns: 7,
+    align: (left, center, center, center, center, center, center),
+    stroke: (x: none),
+    table.hline(),
+    table.header[Configuration][found][MRR][acc\@1][acc\@5][acc\@10][acc\@100],
+    table.hline(stroke: 0.5pt),
+    [flat-PPMI(sum), PAISÀ only], [60], [0.2881], [0.240], [0.330], [0.380], [0.600],
+    [#strong[flat-PPMI(sum) + IDIOM (w=5)]], [#strong[67]], [#strong[0.3940]], [#strong[0.340]],
+      [#strong[0.460]], [#strong[0.520]], [#strong[0.670]],
+    [IDIOM edges alone (no corpus)], [43], [0.2059], [0.160], [0.240], [0.270], [0.430],
+    table.hline(),
+  ),
+)
+
+Curated idiom edges lift accuracy\@1 from 0.240 to #strong[0.340] (+42% relative) and MRR from
+0.288 to 0.394. The weight is a wide inverted-U plateau (w = 4.5--6 all give
+acc\@1 0.30--0.34; peak at 5), so the tuning is robust rather than a knife-edge fit. A constant
+weight beats scaling by how many phrases share a pair (`--count-scaled` →
+acc\@1 ≤ 0.28): the game draws on rare expressions, so uniform trust wins. Idioms
+#emph[alone] reach only 0.16 — the curated graph is sparse, so it is an enrichment of the
+corpus graph, not a replacement.
+
+== Train-set sanity check
+
+Run on `train.json` (965 games), the champion scores acc\@1 #strong[0.258] — #emph[lower] than
+the 0.340 test figure. The 100-game test set is therefore an easy slice, not an overfit target;
+the real-population ceiling is lower still.
+
+= Explored Extensions and Negative Results
+
+This section documents the extensions that were built, evaluated, and then #emph[left out] of
+the final system. They are the experimental core of the project: they establish that
+accuracy\@1 0.34 is a genuine ceiling for this signal, and that the residual error is a recall
+problem. #strong[None of the code or data in this section is part of the shipped `guillotine_v2`
+project.] The recurring pattern is stated once and confirmed repeatedly: #emph[every lever
+improves recall / MRR / acc\@{10,100} but not acc\@1.]
+
+== Knowledge-graph embeddings (the original thesis) — decisive loss
+
+The project's original hypothesis was that learned KG embeddings could score #emph[unobserved]
+clue→ solution links that a graph baseline cannot. Trained with PyKEEN @ali2021pykeen over the
+same typed triples — ComplEx @trouillon2016complex and RotatE @sun2019rotate — they lost badly.
+
+#figure(
+  caption: [KGE and PageRank vs. the flat baseline (PAISÀ only, all candidates).],
+  table(
+    columns: 7,
+    align: (left, center, center, center, center, center, center),
+    stroke: (x: none),
+    table.hline(),
+    table.header[Method][found][MRR][acc\@1][acc\@5][acc\@10][acc\@100],
+    table.hline(stroke: 0.5pt),
+    [flat-PPMI(sum)], [60], [0.2881], [#strong[0.240]], [0.330], [0.380], [0.600],
+    [PageRank (personalised)], [46], [0.0829], [0.050], [0.110], [0.160], [0.460],
+    [KGE ComplEx (full, 300 ep)], [21], [0.0230], [0.010], [0.030], [0.040], [0.210],
+    [KGE RotatE (full, 150 ep, 16 negs)], [37], [0.0676], [0.040], [0.080], [0.100], [0.370],
+    table.hline(),
+  ),
+)
+
+A head-ranking sanity check explains the collapse: for known MWE partners, RotatE ranks the
+true head at ~\#66--170. Over ~30k entities, link prediction is
+dominated by #strong[hubness] — frequent adjectives and prepositions absorb probability mass —
+so the model smears its score instead of pinning the collocate. This reproduces the EVALITA
+finding that co-occurrence methods beat learned embeddings on this game.
+
+== Candidate restriction and breadth-aware scorers
+
+#strong[Noun-restriction] (restrict candidates to noun-dominant lemmas) #emph[hurts]:
+MRR 0.288 → 0.236, found 60 → 55. The sum scorer already ranks the true
+noun above adjective distractors, so the restriction only drops recall.
+
+The game's rule is that the answer connects to #emph[all five] clues, which motivates scorers
+that reward breadth over a single strong edge. Both hurt top-1:
+
+#figure(
+  caption: [Breadth-aware scorers on the PAISÀ+IDIOM champion graph.],
+  table(
+    columns: 7,
+    align: (left, center, center, center, center, center, center),
+    stroke: (x: none),
+    table.hline(),
+    table.header[Scorer][found][MRR][acc\@1][acc\@5][acc\@10][acc\@100],
+    table.hline(stroke: 0.5pt),
+    [#strong[sum (champion)]], [67], [#strong[0.3940]], [#strong[0.340]], [0.460], [0.520], [0.670],
+    [coverage (count clues covered)], [65], [0.2867], [0.200], [0.400], [0.500], [0.650],
+    [logsum (diminishing returns)], [68], [0.3783], [0.290], [0.480], [0.570], [0.680],
+    table.hline(),
+  ),
+)
+
+PPMI #emph[magnitude] pins top-1; rewarding breadth dilutes it. Coverage-first is worst
+(0.340 → 0.200): edge #emph[existence] is noisy (hub adjectives, flat-weight idiom
+edges all count as "covered"), so weak-but-complete junk outranks strong-but-partial truth.
+`logsum` softens this but still trades acc\@1 for recall. (`sum` is the shipped default; the
+alternatives remain selectable via `--combine` but are not recommended.)
+
+== Additional corpora — register beats volume
+
+Three further corpora were joined into the PPMI scan. The lesson is that #emph[register], not
+volume, is the lever, and that candidate vocabulary must stay PAISÀ-defined while an extra
+corpus only enriches counts.
+
+#figure(
+  caption: [Corpus joins, flat-PPMI(sum) with PAISÀ-defined candidates.],
+  table(
+    columns: 8,
+    align: (left, center, center, center, center, center, center, left),
+    stroke: (x: none),
+    table.hline(),
+    table.header[Added corpus][+tokens][found][MRR][acc\@1][acc\@10][acc\@100][verdict],
+    table.hline(stroke: 0.5pt),
+    [— (PAISÀ only)], [—], [60], [0.2881], [0.240], [0.380], [0.600], [baseline],
+    [Wikipedia (CoNLL'17)], [+650M], [61], [0.2854], [0.240], [0.410], [0.610], [recall only],
+    [OpenSubtitles 12M], [+85M], [63], [#strong[0.3193]], [#strong[0.270]], [0.420], [0.630], [#strong[helps]],
+    [OpenSubtitles full], [+766M], [66], [0.3164], [0.250], [0.450], [0.660], [recall ↑, acc\@1 ↓],
+    [itWaC (1 of 21 archives)], [+93M], [60], [0.2785], [0.220], [—], [0.600], [hurts],
+    table.hline(),
+  ),
+)
+
+#strong[OpenSubtitles] @lison2016opensubtitles (12M-line subset) is the only corpus join that
+improves acc\@1 (0.240 → 0.270): register-matched dialogue sharpens the game's collocations
+even though it barely grows the graph. #strong[Wikipedia] (CoNLL 2017 UD parse) doubled the graph yet gave recall only — encyclopedic register.
+#strong[itWaC] @baroni2009wacky (general web text, same register as PAISÀ) slightly hurt and
+the run was stopped after one archive. Scaling OpenSubtitles to the #strong[full]
+766M tokens broadened recall but #emph[lowered] acc\@1 to 0.250 — more of the right register
+is not monotonically better, because extra collocations also reinforce distractors at rank 1.
+Notably, none of these joins beats the curated idiom edges, and stacking OpenSubtitles with
+idioms gives the best recall/MRR (found 70, acc\@100 0.70) but acc\@1 (0.32) trails pure
+PAISÀ+IDIOM (0.34).
+
+== Curated compound edges — small recall gain, acc\@1 held
+
+The headline #emph[capostazione] case is a single-token compound invisible to the adjacency
+patterns. A heuristic decompounder (a node splits unambiguously into two other frequent
+nominal nodes) produced 1,708 `COMPOUND` edges. On top of the champion this lifts found
+67 → 69 and acc\@100 0.670 → 0.690 with acc\@1 steady at 0.340 — a clean
+but small recall gain. Kept out of the final system as marginal.
+
+== The recall-miss anatomy — why the ceiling exists
+
+A gold-rank diagnostic on the champion graph partitions the 100 test games: #strong[34 already
+rank \#1; 18 at rank 2--10; 17 at rank 11--100; 31 missing (>100, recall-dead).]
+Raising the vocabulary from 50k to 100k adds #strong[zero] new gold answers on test (98/100
+gold are already nodes) — the bottleneck is not node coverage. Dumping the 31 missing games
+shows the gold answer connects to 0 clues (10 games), 1 clue (18), or 2 clues (3): the sum
+scorer cannot lift an answer with ≤ 2 weak edges over the flood that touch 3--5. The
+missing links are #emph[syntagmatic collocations people simply know] (#emph[cassa forte /
+continua / malattia], #emph[terza età], #emph[vita da cani]) plus a proper-noun residue. This
+is precisely why similarity- and association-based edges cannot help: the gap is associative
+clue→ answer #emph[phrases], not synonyms.
+
+== Off-corpus edge sources — all the right idea, all too thin
+
+Four external resources were folded in as new edge relations to attack the 31 recall-dead
+games. Each is qualitatively the right kind of signal and quantitatively insufficient.
+
+#figure(
+  caption: [Off-corpus edge sources on the PAISÀ+IDIOM champion (test unless noted). The
+    decisive number for a recall lever is #emph[found]/train-found, not acc\@1.],
+  table(
+    columns: 6,
+    align: (left, left, center, center, center, left),
+    stroke: (x: none),
+    table.hline(),
+    table.header[Source][edges][found][MRR][acc\@1][decisive result],
+    table.hline(stroke: 0.5pt),
+    [#emph[baseline]], [—], [67--69], [0.3940], [#strong[0.340]], [—],
+    [SIM (fastText cc.it.300)], [~268k], [67--68], [0.3993], [0.350], [train found 629→629],
+    [Wiktionary MWEs (kaikki)], [21,358 tot], [69], [0.3931], [0.340], [recovered 2 of 31; gate ≥3 fails],
+    [ConceptNet 5.7 (IT)], [24,854], [67], [0.3940], [0.340], [train found 629→630],
+    [LLM (Sonnet) edges], [—], [—], [—], [—], [abandoned: too slow/costly, unevaluated],
+    table.hline(),
+  ),
+)
+
+#strong[SIM] (fastText @grave2018learning cosine neighbours) leaves train `found` unchanged (629→629):
+nearest neighbours are #emph[paradigmatic] (synonyms of already-connected words), not the
+syntagmatic clue→ answer collocations needed, so they re-rank within reach instead
+of extending it. It must be weighted below PPMI (w ≤ 3) or it floods every clue with
+synonyms and demotes real answers. #strong[Wiktionary MWEs] (via wiktextract
+@ylonen2022wiktextract) recovered exactly 2 of the 31 misses (13.9k phrases collapse to only
+~2.9k net-new pairs after overlap with De Mauro), failing a pre-registered "≥ 3 recovered"
+gate. #strong[ConceptNet] @speer2017conceptnet — an association KB by construction, the most
+promising bet — bought exactly one net-new reachable answer (train
+found 629→630): Italian single-lemma coverage is too sparse. The #strong[LLM-edge]
+bet (ask Sonnet for clue→ answer associations) was abandoned mid-run as too slow and
+too expensive to justify; it has no result either way and should not be retried without a
+cheaper plan (smaller model, caching, or only the 31 recall-dead games).
+
+== Learned re-ranker — the ceiling is not a ranking artefact
+
+The 18 mid-rank (2--10) games look like a re-ranking opportunity, and `train.json` (965 games)
+had never been used. We replaced the scalar `sum` with a 10-feature linear scorer (`sum_ppmi`,
+`coverage`, `max_edge`, `logsum`, and per-relation coverage) and #emph[fit the weights on
+train, evaluated on test].
+
+#figure(
+  caption: [Learned re-ranker (coordinate ascent on train acc\@1) vs. the sum baseline.],
+  table(
+    columns: 7,
+    align: (left, center, center, center, center, center, center),
+    stroke: (x: none),
+    table.hline(),
+    table.header[Configuration][found][MRR][acc\@1][acc\@5][acc\@10][acc\@100],
+    table.hline(stroke: 0.5pt),
+    [sum (baseline), test], [69], [0.3951], [#strong[0.340]], [0.460], [0.520], [0.690],
+    [reranker, train (965)], [—], [—], [0.350], [—], [—], [—],
+    [reranker, test], [#strong[70]], [#strong[0.4043]], [0.330], [#strong[0.490]], [#strong[0.580]], [#strong[0.700]],
+    table.hline(),
+  ),
+)
+
+The learned weights lift #emph[train] acc\@1 0.320 → 0.350, but the gain does not
+transfer — #emph[test] acc\@1 slips 0.340 → 0.330. An optimal linear combination of
+every available feature, fit on 965 games, cannot beat the trivial sum scorer on held-out
+top-1. Tellingly, coordinate ascent assigned weight #strong[0.0] to the per-relation coverage
+features (`cov_IDIOM`, `cov_COMPOUND`, ...): "connected via an idiom/compound edge" carries no
+acc\@1 signal beyond the raw PPMI magnitude, which already encodes it. The re-ranker does
+robustly help recall/MRR (the part that generalises), confirming once more that the bottleneck
+is the 31 recall-dead games, not the scorer.
+
+= Conclusions and Limitations
+
+A minimal system — a typed, pattern-conditioned PPMI graph over PAISÀ, enriched with ~18.5k
+curated idiom edges, scored by a flat PPMI-sum — reaches #strong[accuracy\@1 0.34 / MRR 0.39] on
+EVALITA 2018 NLP4FUN. It has no learned parameters and a single tuned scalar (the idiom weight,
+on a wide plateau). Against it we measured knowledge-graph embeddings, PageRank, noun-restriction,
+breadth-aware scorers, three corpus joins, compound / embedding-similarity / Wiktionary /
+ConceptNet edges, and a learned re-ranker. The result is unambiguous and repeated across roughly
+eight independent experiments: #strong[every extension improves recall, MRR, and acc\@{10,100},
+but none improves accuracy\@1.] The curated idiom edges — the purest register match — are the
+only lever that ever moved top-1.
+
+#strong[Limitations.] (i) The single scalar weight is tuned on the 100-game test set (the only
+eval split), mitigated by the broad plateau but still a caveat. (ii) The heuristic decompounder
+and the nominal-only idiom filter miss verb-initial compounds and verbal idioms. (iii) The real
+ceiling is #emph[recall]: 31 of 100 test games have gold answers that exist as graph nodes but
+lack the clue→ answer edges the corpus patterns cannot produce. Of these, ~18
+are dictionary-MWE gaps, ~9 are cultural/proper-noun knowledge, and 2 are vocabulary
+gaps. Closing them requires a #emph[register-matched, associative phrase resource] keyed on
+co-occurrence #emph[presence] — not a smarter ranker, more generic text, or paradigmatic
+similarity, all of which were shown to be dead ends. That resource is the one direction with
+demonstrated acc\@1 headroom and the natural next step.
+
+#bibliography("references.bib", title: "References", style: "ieee")
