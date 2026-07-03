@@ -12,5 +12,3 @@ polirematiche_proverbi/
 __pycache__/
 *.py[cod]
 .pytest_cache/
-
-docs/*.pdf
