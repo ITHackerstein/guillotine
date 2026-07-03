@@ -13,7 +13,14 @@ tools = ["spacy>=3.8", "click>=8.2.1"] # NOTE: `click` is only because of a bug 
 #   uv sync --group llm --group llm-amd      # ROCm
 #   uv sync --group llm --group llm-nvidia   # CUDA
 #   uv sync --group llm --group llm-cpu      # CPU only
-llm = ["transformers>=4.51", "accelerate>=1.2"]
+llm = [
+    "transformers>=4.51",
+    "accelerate>=1.2",
+    "evaluate>=0.4",
+    "sacrebleu>=2.4",
+    "rouge-score>=0.1.2",
+    "bert-score>=0.3.13",
+]
 llm-cpu = ["torch>=2.5"]
 llm-nvidia = ["torch>=2.5"]
 llm-amd = ["torch>=2.5", "pytorch-triton-rocm"]

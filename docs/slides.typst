@@ -38,8 +38,8 @@
   #text(size: 16pt, style: "italic")[d.carella12\@studenti.uniba.it]
 ]
 
-// ---------------------------------------------------------------- the game
-#slide(title: "The game")[
+// ---------------------------------------------------------------- introduction
+#slide(title: "Introduction and Motivations")[
   #emph[La Ghigliottina] (final round of #emph[L'Eredità]): five clue words, find the one word
   that connects to *all five*.
 
@@ -63,8 +63,23 @@
   syntagmatic, not paradigmatic.]
 ]
 
+// ---------------------------------------------------------------- related work
+#slide(title: "Related Work")[
+  The EVALITA *NLP4FUN* shared task framed #emph[La Ghigliottina] as a computational language
+  game. The seminal player *OTTHO* (Basile et al. 2009) solved it by *knowledge infusion* —
+  retrieval / co-occurrence over a dictionary, proverb lists, and Wikipedia — and *beat
+  learned-embedding methods*, the outcome we reproduce.
+
+  #v(10pt)
+  Our contribution is not a new model but a controlled ablation showing *why*:
+  #v(4pt)
+  - On ~30k entities, knowledge-graph embeddings are dominated by *hubness*.
+  - Every recall-broadening extension trades top-1 accuracy for rank-tail recall.
+  - The signal is *syntagmatic*, so word2vec / fastText are a poor structural fit.
+]
+
 // ---------------------------------------------------------------- approach
-#slide(title: "Approach — three stages")[
+#slide(title: "Proposed Approach")[
   + *Typed, weighted word graph* from PAISÀ. Edge #emph[types] are MWE-bearing patterns —
     `MOD` (noun–adj), `BINOMIAL` (X e Y), `DI` (X di Y), `DA` (X da Y). Edge #emph[weights]
     are *pattern-conditioned PPMI* (PMI within each relation's own pairs).
@@ -73,8 +88,11 @@
   + *Flat PPMI-sum solver.* Per clue take the strongest edge to a candidate (max over
     relations/directions), then sum across the five clues. Highest sum wins.
 
-  #v(10pt)
+  #v(8pt)
   #align(center)[#emph[No learned parameters. One tuned scalar (the idiom weight).]]
+  #v(6pt)
+  #align(center)[#text(size: 16pt)[Optional `--describe` pass: a local *Qwen3-1.7B* explains
+  the answer, one sentence per clue — post-hoc, plays no part in solving.]]
 ]
 
 // ---------------------------------------------------------------- main result
@@ -102,8 +120,35 @@
   (+42% rel), MRR 0.29 → 0.39. Weight is a wide plateau (w = 4.5–6), not a knife-edge fit.
 ]
 
+// ---------------------------------------------------------------- description quality
+#slide(title: "Description quality")[
+  The optional `--describe` explanations (Qwen3-1.7B) scored vs. the gold `desc` field
+  (100 test games), generated for the solver's *own* top-1 prediction:
+
+  #v(8pt)
+  #align(center)[
+    #rtable(
+      columns: 6,
+      align: (center, center, center, center, center, center),
+      inset: (x: 10pt, y: 6pt),
+      table.hline(),
+      table.header[BLEU][ROUGE-1][ROUGE-2][ROUGE-L][ROUGE-Lsum][BERTScore],
+      table.hline(stroke: 0.5pt),
+      [1.70], [0.248], [0.035], [0.177], [0.170], [*0.658*],
+      table.hline(),
+    )
+  ]
+  #v(4pt)
+  #align(center)[#text(size: 15pt)[BLEU on the sacreBLEU 0–100 scale; the rest 0–1.]]
+
+  #v(8pt)
+  Low n-gram overlap — free-form Italian, generated for the *predicted* word (acc\@1 0.34) —
+  but *BERTScore 0.66* shows the explanations are semantically on-topic. A usability layer,
+  not a scored task.
+]
+
 // ---------------------------------------------------------------- what didn't work
-#slide(title: "What we tried and rejected")[
+#slide(title: "Explored Extensions and Negative Results")[
   Every extension improves recall / MRR / acc\@{10,100} — *none improves acc\@1.*
 
   #v(8pt)
@@ -133,7 +178,7 @@
 ]
 
 // ---------------------------------------------------------------- KGE
-#slide(title: "Why knowledge-graph embeddings lose")[
+#slide(title: "Knowledge-graph embeddings — decisive loss")[
   The project's *original* thesis: learned embeddings could score #emph[unobserved]
   clue→answer links a graph baseline can't.
 
@@ -160,7 +205,7 @@
 ]
 
 // ---------------------------------------------------------------- register
-#slide(title: "Register beats volume")[
+#slide(title: "Additional corpora — register beats volume")[
   Extra corpora joined into the PPMI scan (PAISÀ-defined candidates):
 
   #v(8pt)
@@ -187,7 +232,7 @@
 ]
 
 // ---------------------------------------------------------------- ceiling
-#slide(title: "The real ceiling is recall")[
+#slide(title: "The recall-miss anatomy — why the ceiling exists")[
   Gold-rank anatomy of the 100 test games:
 
   #v(6pt)
@@ -214,7 +259,7 @@
 ]
 
 // ---------------------------------------------------------------- conclusion
-#slide(title: "Conclusions")[
+#slide(title: "Conclusions and Limitations")[
   A *minimal* system — typed pattern-PPMI over PAISÀ + curated idiom edges + flat sum —
   reaches *acc\@1 0.34 / MRR 0.39* on EVALITA 2018 NLP4FUN, beating KGE, PageRank, and every
   corpus/edge extension.

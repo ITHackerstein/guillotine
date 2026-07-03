@@ -179,6 +179,16 @@ co-occurring in a phrase. Restricting to nominal lemmas is deliberate: including
 pulls in hub lemmas (#emph[fare], #emph[avere], #emph[essere]) that pollute the sum scorer.
 The 36k phrases yield $approx$ 18.5k distinct nominal pairs.
 
+== Optional solution explanation <sec:describe>
+
+Beyond predicting the solution, the system can optionally #emph[explain] it. Given the
+predicted answer and the five clues, a small instruction-tuned LLM, Qwen3-1.7B
+@qwenteam2025qwen3 run locally through the Hugging Face `transformers` pipeline, is prompted
+in Italian to produce one sentence per clue naming the multi-word expression, compound, or
+idiom that links it to the answer (greedy decoding, thinking mode disabled). This is a post-hoc
+presentation layer, exposed via `--describe`; it plays no part in solving and does not affect
+the ranking metrics.
+
 = Evaluation
 
 == Setup and metrics
@@ -211,6 +221,33 @@ Curated idiom edges lift accuracy\@1 from 0.240 to #strong[0.340] (+42% relative
 0.288 to 0.394. The weight is a wide inverted-U plateau (w = 4.5--6 all give
 acc\@1 0.30--0.34; peak at 5). A constant weight beats scaling by how many phrases share a pair:
 the game draws on rare expressions, so uniform trust wins.
+
+== Description quality
+
+The optional explanation pass (@sec:describe) is scored against the gold `desc` field of the
+100 test games. Each explanation is generated for the solver's #emph[own] top-1 prediction, so
+the numbers fold in solver errors as well as phrasing differences.
+
+#figure(
+  caption: [Explanation quality of the Qwen3-1.7B `--describe` pass against the gold `desc`
+    field (100 test games). BLEU is on the sacreBLEU 0--100 scale; the rest are 0--1.],
+  table(
+    columns: 6,
+    align: (center, center, center, center, center, center),
+    stroke: (x: none),
+    table.hline(),
+    table.header[BLEU][ROUGE-1][ROUGE-2][ROUGE-L][ROUGE-Lsum][BERTScore],
+    table.hline(stroke: 0.5pt),
+    [1.70], [0.248], [0.035], [0.177], [0.170], [0.658],
+    table.hline(),
+  ),
+)
+
+The low n-gram overlap (BLEU 1.70, ROUGE-L 0.18) is expected: the explanations are free-form
+generative Italian that rarely reuses the gold wording, and roughly two thirds of them describe
+a predicted word that differs from the gold (acc\@1 0.34). #emph[BERTScore] 0.66, which measures
+contextual-embedding similarity rather than surface overlap, confirms the explanations are
+semantically on-topic. The feature is a usability layer, not a scored task.
 
 = Explored Extensions and Negative Results
 

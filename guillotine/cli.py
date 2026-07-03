@@ -50,7 +50,25 @@ def evaluate(args):
 
     print(f"[.] Evaluating solver with {args.combine} combination method...")
     metrics = evaluate_solver(solver, games)
-    print(format_metrics(metrics))
+    print(f"[+] Solution evaluation metrics:\n    {format_metrics(metrics)}")
+
+    if args.describe:
+        from .llm import describe_solution
+        from .eval import evaluate_descriptions
+        print(f"[.] Collecting predicted descriptions for each solution...")
+        actual = [game.description for game in games]
+        predicted = []
+        t0 = time.time()
+        for i, game in enumerate(games, 1):
+            solution, _ = solver(game.clues)[0]
+            predicted.append(describe_solution(solution, game.clues))
+            if i % 5 == 0:
+                print(f"[.] Processed {i}/{len(games)} games. {(time.time() - t0) / i:.1f} games/s")
+        print(f"[+] Collected predicted descriptions for {len(games)} games in {time.time() - t0:.1f} seconds")
+
+        print(f"[.] Evaluating description quality...")
+        metrics = evaluate_descriptions(actual, predicted)
+        print(f"[+] Description evaluation metrics:\n    {format_metrics(metrics)}")
 
 
 def solve(args):
@@ -83,6 +101,7 @@ if __name__ == "__main__":
     evaluate_parser.add_argument("--min-frequency", type=int, default=5, help="Minimum frequency for lemmas to be included in the vocabulary")
     evaluate_parser.add_argument("--min-count", type=int, default=5, help="Minimum count for pairs to be included in the triples")
     evaluate_parser.add_argument("--combine", type=str, choices=["max", "sum", "product", "coverage", "logsum"], default="sum", help="Method to combine clue scores")
+    evaluate_parser.add_argument("--describe", action="store_true", help="Use LLM to describe how each clue relates to the solution")
     evaluate_parser.add_argument("--games", type=str, default=DEFAULT_GAMES, help="Path to the games file")
     evaluate_parser.set_defaults(func=evaluate)
 

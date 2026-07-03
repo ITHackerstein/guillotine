@@ -6,6 +6,7 @@ import json
 class Game:
     clues: list[str]
     solution: str
+    description: str
 
 def load_evalita(path: str) -> list[Game]:
     games: list[Game] = []
@@ -14,7 +15,8 @@ def load_evalita(path: str) -> list[Game]:
             game_raw = json.loads(line)
             games.append(Game(
                 clues=[clue.strip().lower() for clue in [game_raw[f"hint{i + 1}"] for i in range(5)]],
-                solution=game_raw["sol"].strip().lower()
+                solution=game_raw["sol"].strip().lower(),
+                description=game_raw["desc"].strip()
             ))
     return games
 
@@ -61,6 +63,25 @@ def evaluate_solver(
         metrics[f"acc@{k}"] = hits_per_k[k] / len(games)
 
     return metrics
+
+
+def evaluate_descriptions(actual: list[str], predicted: list[str]) -> dict:
+    import evaluate
+
+    metrics = {}
+
+    bleu = evaluate.load("sacrebleu")
+    metrics["bleu"] = bleu.compute(predictions=predicted, references=[[r] for r in actual])["score"]
+
+    rouge = evaluate.load("rouge")
+    metrics.update(rouge.compute(predictions=predicted, references=actual, use_stemmer=False))
+
+    bertscore = evaluate.load("bertscore")
+    r = bertscore.compute(predictions=predicted, references=actual, lang="it")
+    metrics["bertscore"] = sum(r["f1"]) / len(r["f1"])
+
+    return metrics
+
 
 def format_metrics(metrics: dict) -> str:
     return " ".join(
