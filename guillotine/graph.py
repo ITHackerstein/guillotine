@@ -128,7 +128,7 @@ def load_idiom_edges(path: str) -> list[tuple[str, str, int]]:
 def merge_idiom_edges(
     triples: dict[tuple[str, str, str], float],
     edge_pairs: Iterable[tuple[str, str, int]],
-    weight: float = 5.0
+    weight: float = 5.5
 ) -> dict[tuple[str, str, str], float]:
     merged = dict(triples)
     for a, b, count in edge_pairs:
